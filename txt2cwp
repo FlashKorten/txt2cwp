@@ -1,0 +1,191 @@
+#!/usr/local/bin/perl
+
+########################################################################
+#
+# txt2cwp  -  Version 0.2 
+# ---------
+# Conversion script from .txt to a pdf crossword template
+#
+# Written by Sebastian Korten
+# eMail: Sebastian.Korten at gmail.com
+# 
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# 
+########################################################################
+
+use strict;
+use warnings;
+
+unless ((@ARGV == 1) && ($ARGV[0] =~ m/.txt$/)) {
+  print "USAGE: $0 INFILE.txt\n\n";
+  exit(0);
+}
+
+my $infile = $ARGV[0];
+my $outfile = $infile;
+$outfile =~ s/txt$/tex/;
+
+my @field;
+open(IN, $infile);
+while(<IN>){
+  chomp;
+  push(@field, [split(//)]);
+}
+close(IN);
+
+my $maxX = @field;
+my $maxY = @{$field[0]};
+my $emptyCell = "_";
+
+# Find word beginnings...
+for (my $y = 0; $y < $maxY; $y++) {
+  for (my $x = 0; $x < $maxX; $x++) {
+    if (($x == 0) 
+      && ($field[$x][$y] ne $emptyCell)
+      && ($field[$x + 1][$y] ne $emptyCell)){
+      unless (substr($field[$x][$y], 0, 1) eq "["){
+        $field[$x][$y] = "[]" . $field[$x][$y];
+      }
+    }
+    if (($x < $maxX - 2) && ($field[$x][$y] eq $emptyCell)
+      && ($field[$x + 1][$y] ne $emptyCell)
+      && ($field[$x + 2][$y] ne $emptyCell)){
+      unless (substr($field[$x + 1][$y], 0, 1) eq "["){
+        $field[$x + 1][$y] = "[]" . $field[$x + 1][$y];
+      }
+    }
+    if (($y == 0) && ($x != 0)
+      && ($field[$x][$y] ne $emptyCell)
+      && ($field[$x][$y + 1] ne $emptyCell)){
+      unless (substr($field[$x][$y], 0, 1) eq "["){
+        $field[$x][$y] = "[]" . $field[$x][$y];
+      }
+    }
+    if (($y < $maxY - 2) && ($field[$x][$y] eq $emptyCell)
+      && ($field[$x][$y + 1] ne $emptyCell)
+      && ($field[$x][$y + 2] ne $emptyCell)){
+      unless (substr($field[$x][$y + 1], 0, 1) eq "["){
+        $field[$x][$y + 1] = "[]" . $field[$x][$y + 1];
+      }
+    }
+  }
+}
+
+# Number starting fields
+my $fieldNo = 1;
+for (my $x = 0; $x < @field; $x++) {
+  for (my $y = 0; $y < @{$field[$x]}; $y++) {
+    if ($field[$x][$y] =~ m/^\[\]/){
+      $field[$x][$y] =~ s/^\[\]/[$fieldNo]/;
+      $fieldNo++;
+    }
+    $field[$x][$y] =~ s/$emptyCell/*/;
+  }
+}
+
+open(OUT, ">$outfile");
+&printTexHeader();
+&printCrossword();
+&printClues();
+&printTexFooter();
+close(OUT);
+
+sub printfield(){
+  for (my $x = 0; $x < $maxX; $x++) {
+    for (my $y = 0; $y < $maxY; $y++) {
+      print $field[$x][$y] . " ";
+    }
+    print "\n";
+  }
+}
+
+sub printTexHeader(){
+  print OUT "\\documentclass[a4paper]{article}\n";
+  print OUT "\\usepackage{cwpuzzle}\n";
+  print OUT "\\usepackage{multicol}\n";
+  print OUT "\\usepackage{german}\n";
+  print OUT "\\setlength{\\textwidth}{13cm}\n";
+  print OUT "\\begin{document}\n\n";
+}
+
+sub printCrossword(){
+  print OUT "\\begin{Puzzle}{$maxX}{$maxY}%\n";
+  for (my $x = 0; $x < @field; $x++) {
+    for (my $y = 0; $y < @{$field[$x]}; $y++) {
+      print OUT "|".$field[$x][$y];
+    }
+    print OUT "|.\n";
+  }
+  print OUT "\\end{Puzzle}\n\n";
+}
+
+sub printTexFooter(){
+  print OUT "\\end{document}\n";
+}
+
+sub printClues(){
+  print OUT "\\begin{multicols}{2}%\n";
+  print OUT "\\begin{PuzzleClues}{\\textbf{Horizontal:}}\\\\%\n";
+  for (my $x = 0; $x < $maxX; $x++) {
+    for (my $y = 0; $y < $maxY; $y++) {
+      if ($field[$x][$y] =~ m/^\[/){
+        my $tmpNumber = $field[$x][$y];
+        my $tmpWord = $tmpNumber;
+        $tmpNumber =~ s/^\[(\d+)\].*$/$1/;
+        $tmpWord =~ s/^.*\]//;
+        if (($y == 0) || ($field[$x][$y - 1] eq "*")){
+          my $tmpY = $y;
+          while (($tmpY < $maxY - 1)
+            && ($field[$x][$tmpY + 1] ne "*")){
+            my $nextLetter = $field[$x][$tmpY + 1];
+            $nextLetter =~ s/^.*\]//;
+            $tmpWord .= $nextLetter;
+            $tmpY++;
+          }
+          if (length($tmpWord) > 1){
+            print OUT "\t\\Clue{$tmpNumber}{$tmpWord}{}%\n";
+          }
+        }
+      }
+    }
+  }
+  print OUT "\\end{PuzzleClues}%\n\n";
+  print OUT "\\begin{PuzzleClues}{\\textbf{Vertical:}}\\\\%\n";
+  for (my $x = 0; $x < $maxX; $x++) {
+    for (my $y = 0; $y < $maxY; $y++) {
+      if ($field[$x][$y] =~ m/^\[/){
+        my $tmpNumber = $field[$x][$y];
+        my $tmpWord = $tmpNumber;
+        $tmpNumber =~ s/^\[(\d+)\].*$/$1/;
+        $tmpWord =~ s/^.*\]//;
+        if (($x == 0) || ($field[$x - 1][$y] eq "*")){
+          my $tmpX = $x;
+          while (($tmpX < $maxX - 1)
+            && ($field[$tmpX + 1][$y] ne "*")){
+            my $nextLetter = $field[$tmpX + 1][$y];
+            $nextLetter =~ s/^.*\]//;
+            $tmpWord .= $nextLetter;
+            $tmpX++;
+          }
+          if (length($tmpWord) > 1){
+            print OUT "\t\\Clue{$tmpNumber}{$tmpWord}{}%\n";
+          }
+        }
+      }
+    }
+  }
+  print OUT "\\end{PuzzleClues}%\n";
+  print OUT "\\end{multicols}%\n\n";
+}
